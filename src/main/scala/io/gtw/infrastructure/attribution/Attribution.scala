@@ -1,13 +1,16 @@
 package io.gtw.infrastructure.attribution
 
 import com.typesafe.scalalogging.slf4j.LazyLogging
+import io.gtw.infrastructure.attribution.output.KafkaProducerManager
 import io.gtw.infrastructure.attribution.utils.JsonUtils
 import io.gtw.infrastructure.attribution.weight.PageRank
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import scopt.OptionParser
+import org.apache.kafka.clients.producer.{Producer, ProducerRecord}
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 object Attribution  extends LazyLogging {
   def main(args: Array[String]) {
@@ -17,10 +20,15 @@ object Attribution  extends LazyLogging {
       opt[String]('d', "inputWikidata").action((x, c) => c.copy(inputWikidata = Some(x))).text("input wikidata path.")
       opt[String]('i', "inputBase").action((x, c) => c.copy(inputBase = Some(x))).text("input base. [HDFS address].")
       opt[String]('t', "outputItem").action((x, c) => c.copy(outputItem = Some(x))).text("output item path of the result that need put to.")
-      opt[String]('y', "outputProperty").action((x, c) => c.copy(outputItem = Some(x))).text("output property path of the result that need put to.")
+      opt[String]('r', "outputRelationship").action((x, c) => c.copy(outputRelationship = Some(x))).text("output relationship path of the result that need put to.")
+      opt[String]('y', "outputProperty").action((x, c) => c.copy(outputProperty = Some(x))).text("output property path of the result that need put to.")
       opt[String]('o', "outputBase").action((x, c) => c.copy(outputBase = Some(x))).text("output base. [HDFS address].")
       opt[Double]('r', "tolerance").action((x, c) => c.copy(tolerance = x)).text("tolerance of PageRank.")
       opt[String]('l', "language").action((x, c) => c.copy(language = Some(x))).text("language supported.")
+      opt[String]('b', "kafkaBrokers").action((x, c) => c.copy(kafkaBrokers = Some(x))).text("kafka brokers to output")
+      opt[String]('e', "kafkaTopicItem").action((x, c) => c.copy(kafkaTopicItem = Some(x))).text("kafka topic item to output")
+      opt[String]('h', "kafkaTopicRelationship").action((x, c) => c.copy(kafkaTopicRelationship = Some(x))).text("kafka topic relationship to output")
+      opt[String]('s', "kafkaTopicProperty").action((x, c) => c.copy(kafkaTopicProperty = Some(x))).text("kafka topic properties to output")
     }
     parser.parse(args, Param()) match {
       case Some(param) =>
@@ -37,9 +45,14 @@ object Attribution  extends LazyLogging {
     val inputWikidata: Option[String] = param.inputWikidata
     val outputBase: Option[String] = param.outputBase
     val outputItem: Option[String] = param.outputItem
+    val outputRelationship: Option[String] = param.outputRelationship
     val outputProperty: Option[String] = param.outputProperty
     val tolerance: Double = param.tolerance
     val language: Option[String] = param.language
+    val kafkaBrokers: Option[String] = param.kafkaBrokers
+    val kafkaTopicItem: Option[String] = param.kafkaTopicItem
+    val kafkaTopicRelationship: Option[String] = param.kafkaTopicRelationship
+    val kafkaTopicProperty: Option[String] = param.kafkaTopicProperty
 
     val inputSource: String = inputBase match {
       case Some(x) => x
@@ -66,6 +79,11 @@ object Attribution  extends LazyLogging {
       case None => throw new IllegalArgumentException(s"set output item file [-o] in command line or set Env ATTRIBUTION_OUTPUT_ITEM")
     }
 
+    val outputRelationshipPath: String = outputRelationship match {
+      case Some(x) => x
+      case None => throw new IllegalArgumentException(s"set output relations file [-o] in command line or set Env ATTRIBUTION_OUTPUT_RELATIONSHIP")
+    }
+
     val outputPropertyPath: String = outputProperty match {
       case Some(x) => x
       case None => throw new IllegalArgumentException(s"set output property file in command line or set Env ATTRIBUTION_OUTPUT_PROPERTY")
@@ -74,14 +92,32 @@ object Attribution  extends LazyLogging {
     val (languageList, languageWikiList): (Array[String], Array[String]) = language match {
       case Some(x) => (x.split('|'), x.split('|').map(x => x + "wiki"))
     }
-    languageList.foreach(println)
-    languageWikiList.foreach(println)
+
+    val kafkaBrokersStr = kafkaBrokers match {
+      case Some(x) => x
+      case None => throw new IllegalArgumentException(s"set kafka brokers in command line or set Env ATTRIBUTION_KAFKA_BROKERS")
+    }
+
+    val kafkaTopicItemStr = kafkaTopicItem match {
+      case Some(x) => x
+      case None => throw new IllegalArgumentException(s"set kafka output topic item in command line or set Env ATTRIBUTION_KAFKA_TOPIC_ITEM")
+    }
+
+    val kafkaTopicRelationshipStr = kafkaTopicRelationship match {
+      case Some(x) => x
+      case None => throw new IllegalArgumentException(s"set kafka output topic relationship in command line or set Env ATTRIBUTION_KAFKA_TOPIC_RELATIONSHIP")
+    }
+
+    val kafkaTopicPropertyStr = kafkaTopicProperty match {
+      case Some(x) => x
+      case None => throw new IllegalArgumentException(s"set kafka output topic property in command line or set Env ATTRIBUTION_KAFKA_TOPIC_PROPERTIES")
+    }
 
     val inputWikipediaAddress: String = inputSource + inputWikipediaPath
     val inputWikidataAddress: String = inputSource + inputWikidataPath
     val outputItemAddress: String = outputSource + outputItemPath
+    val outputRelationshipAddress: String = outputSource + outputRelationshipPath
     val outputPropertyAddress: String = outputSource + outputPropertyPath
-
     val sparkConf = new SparkConf().setAppName("Attribution").setMaster("local[1]")
     val sparkContext = new SparkContext(sparkConf)
 
@@ -99,7 +135,17 @@ object Attribution  extends LazyLogging {
     val wikidataSourceMapRDD = sparkContext.textFile(inputWikidataAddress).map(preprocess).filter(line => line != "").map(jsonToMap).map(cleanWikidata(_, languageList, languageWikiList))
     // wikidataSourceMapRDD.foreach(println)
     val wikiDataItemRDD = wikidataSourceMapRDD.filter(wikiData => wikiData.getOrElse("type", "") == "item")
+    val wikiDataRelationshipRDD = wikiDataItemRDD.flatMap(generateRelationships)
     val wikiDataPropertyRDD = wikidataSourceMapRDD.filter(wikiData => wikiData.getOrElse("type", "") == "property")
+
+    /* -- output relationships and properties -- */
+    // wikiDataPropertyRDD.map(JsonUtils.toJson).foreach(println)
+    wikiDataPropertyRDD.map(JsonUtils.toJson).saveAsTextFile(outputPropertyAddress)
+    wikiDataPropertyRDD.map(JsonUtils.toJson).foreachPartition(sendRecordByPartitions(kafkaBrokersStr, kafkaTopicPropertyStr, _))
+
+    // wikiDataRelationshipRDD.map(JsonUtils.toJson).foreach(println)
+    wikiDataRelationshipRDD.map(JsonUtils.toJson).saveAsTextFile(outputRelationshipAddress)
+    wikiDataRelationshipRDD.map(JsonUtils.toJson).foreachPartition(sendRecordByPartitions(kafkaBrokersStr, kafkaTopicRelationshipStr, _))
 
     /* join wikipedia with wikidata */
     val wikiDataItemSourceKeyedByWikiTitleRDD = wikiDataItemRDD.map(wikidataKeyedByWikiTitle)
@@ -109,11 +155,20 @@ object Attribution  extends LazyLogging {
       case (_, (attributedMap, wikidataMap)) => attributedMap ++ wikidataMap
     }
 
-    /*-- output to file --*/
-    formattedJoinedRDD.map(JsonUtils.toJson).foreach(println)
+    /*-- output items --*/
+    // formattedJoinedRDD.map(JsonUtils.toJson).foreach(println)
+    formattedJoinedRDD.map(JsonUtils.toJson).saveAsTextFile(outputItemAddress)
+    formattedJoinedRDD.map(JsonUtils.toJson).foreachPartition(sendRecordByPartitions(kafkaBrokersStr, kafkaTopicItemStr, _))
+
 
     /*-- stop spark context --*/
     sparkContext.stop()
+  }
+
+  def sendRecordByPartitions(kafkaBrokers: String, topic: String, partitionOfRecords: Iterator[String]): Unit = {
+    val producer: Producer[String, String] = KafkaProducerManager.getProducer(kafkaBrokers)
+    partitionOfRecords.foreach(record => producer.send(new ProducerRecord[String, String](topic, record)))
+    KafkaProducerManager.close(producer)
   }
 
   private def jsonToMap(line: String): Map[String, Any] = {
@@ -172,6 +227,44 @@ object Attribution  extends LazyLogging {
           case None => ("", Map[String, Any]())
         }
       case None => ("", Map[String, Any]())
+    }
+  }
+
+  private def generateRelationships(itemInfo: Map[String, Any]): List[Map[String, Any]] = {
+    val srcVertex: String = itemInfo.getOrElse("id", "00").asInstanceOf[String]
+    val vertexList = ListBuffer[(String, String)]()
+    if (!itemInfo.isDefinedAt("type") || itemInfo.getOrElse("type", "") != "item") {
+      return Nil
+    }
+    val claimInfoMap = itemInfo.get("claims")
+    if (claimInfoMap.isDefined) {
+      claimInfoMap.get.asInstanceOf[Map[String, Any]].values
+        .foreach((propertyList: Any) => propertyList.asInstanceOf[List[Any]]
+          .foreach((property: Any)=> {
+            val mainsnakInfoMap = property.asInstanceOf[Map[String, Any]].get("mainsnak")
+            if (mainsnakInfoMap.isDefined) {
+              val property = mainsnakInfoMap.get.asInstanceOf[Map[String, Any]].getOrElse("property", "").toString
+              val dataValueInfoMap = mainsnakInfoMap.get.asInstanceOf[Map[String, Any]].get("datavalue")
+              if (dataValueInfoMap.isDefined) {
+                val dataValueMap = dataValueInfoMap.get.asInstanceOf[Map[String, Any]].get("value")
+                if (dataValueMap.isDefined && dataValueMap.get.isInstanceOf[Map[String, Any]]) {
+                  val dataValueEntityMap = dataValueMap.get.asInstanceOf[Map[String, Any]]
+                  val entity_type = dataValueEntityMap.get("entity-type")
+                  if (entity_type.isDefined && entity_type.get == "item") {
+                    vertexList.append(("Q" + dataValueEntityMap.getOrElse("numeric-id", 0).toString, property))
+                  }
+                }
+              }
+            }
+          })
+        )
+    }
+    vertexList.toList.map { vertex =>
+      val formattedResultMap = new scala.collection.mutable.HashMap[String, Any]()
+      formattedResultMap += ("src" -> srcVertex)
+      formattedResultMap += ("dest" -> vertex._1)
+      formattedResultMap += ("property" -> vertex._2)
+      formattedResultMap.toMap
     }
   }
 
