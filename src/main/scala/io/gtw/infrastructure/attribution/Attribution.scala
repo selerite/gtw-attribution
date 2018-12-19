@@ -1,6 +1,6 @@
 package io.gtw.infrastructure.attribution
 
-import com.typesafe.scalalogging.slf4j.LazyLogging
+import com.typesafe.scalalogging.LazyLogging
 import io.gtw.infrastructure.attribution.output.KafkaProducerManager
 import io.gtw.infrastructure.attribution.utils.JsonUtils
 import io.gtw.infrastructure.attribution.weight.PageRank
