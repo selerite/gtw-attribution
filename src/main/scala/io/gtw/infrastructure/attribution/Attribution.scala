@@ -90,8 +90,9 @@ object Attribution  extends LazyLogging {
     }
 
     val (languageList, languageWikiList): (Array[String], Array[String]) = language match {
-      case Some(x) => (x.split('|'), x.split('|').map(x => x + "wiki"))
+      case Some(x) => (x.split(','), x.split(',').map(x => x + "wiki"))
     }
+    languageList.foreach(println)
 
     val kafkaBrokersStr = kafkaBrokers match {
       case Some(x) => x
@@ -118,7 +119,8 @@ object Attribution  extends LazyLogging {
     val outputItemAddress: String = outputSource + outputItemPath
     val outputRelationshipAddress: String = outputSource + outputRelationshipPath
     val outputPropertyAddress: String = outputSource + outputPropertyPath
-    val sparkConf = new SparkConf().setAppName("Attribution").setMaster("local[1]")
+    val sparkConf = new SparkConf().setAppName("Attribution")
+    // val sparkConf = new SparkConf().setAppName("Attribution").setMaster("local[1]")
     val sparkContext = new SparkContext(sparkConf)
 
     /* -- load wikipedia data and convert every single document from json to format: Map[key, value] -- */
