@@ -2,13 +2,16 @@ package io.gtw.infrastructure.attribution.output
 
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer}
 import java.util.Properties
-import java.io.FileInputStream
 
 object KafkaProducerManager {
   def getProducer(kafkaBrokers: String): Producer[String, String] = {
     val properties: Properties = new Properties()
-    val path = getClass.getClassLoader.getResource("kafkaConfiguration.properties").getPath.replaceAll("%20", " ")
-    properties.load(new FileInputStream(path))
+    properties.setProperty("retries", "3")
+    properties.setProperty("batch.size", "16384")
+    properties.setProperty("linger.ms", "1")
+    properties.setProperty("buffer.memory", "33554432")
+    properties.setProperty("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+    properties.setProperty("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
     properties.setProperty("bootstrap.servers", kafkaBrokers)
     new KafkaProducer[String, String](properties)
   }

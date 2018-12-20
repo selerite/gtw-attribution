@@ -92,7 +92,6 @@ object Attribution  extends LazyLogging {
     val (languageList, languageWikiList): (Array[String], Array[String]) = language match {
       case Some(x) => (x.split(','), x.split(',').map(x => x + "wiki"))
     }
-    languageList.foreach(println)
 
     val kafkaBrokersStr = kafkaBrokers match {
       case Some(x) => x
@@ -278,15 +277,19 @@ object Attribution  extends LazyLogging {
 
     val filteredLabels = labels match {
       case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+      case _ => Map[String, Any]()
     }
     val filteredDescriptions = descriptions match {
       case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+      case _ => Map[String, Any]()
     }
     val filteredAliases = aliases match {
       case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+      case _ => Map[String, Any]()
     }
     val filteredSitelinks = sitelinks match {
       case sMap: Map[String, Any] => sMap.filter(key => LanguageWikiList.contains(key._1))
+      case _ => Map[String, Any]()
     }
     wikidataSourceMap + ("labels" -> filteredLabels, "descriptions" -> filteredDescriptions, "aliases" -> filteredAliases, "sitelinks" -> filteredSitelinks)
   }

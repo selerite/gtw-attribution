@@ -11,7 +11,7 @@ object EnvUtils {
   def outputRelationshipFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_OUTPUT_RELATIONSHIP", Some("xxx"))
   def outputPropertyFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_OUTPUT_PROPERTY", Some("xxx"))
   def toleranceFromEnv: Double = Properties.envOrElse("ATTRIBUTION_TOLERANCE", "0.01").toDouble
-  def languageFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_LANGUAGE", Some("en|zh"))
+  def languageFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_LANGUAGE", Some("en,zh"))
   def kafkaBrokersFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_KAFKA_BROKERS", Some("10.131.40.191:9092"))
   def kafkaTopicItemFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_KAFKA_TOPIC_ITEM", Some("items"))
   def kafkaTopicRelationshipFromEnv: Option[String] = Properties.envOrSome("ATTRIBUTION_KAFKA_TOPIC_RELATIONSHIP", Some("relationships"))
