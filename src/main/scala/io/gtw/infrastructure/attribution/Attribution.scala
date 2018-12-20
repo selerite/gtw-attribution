@@ -238,18 +238,47 @@ object Attribution  extends LazyLogging {
       return Nil
     }
     val claimInfoMap = itemInfo.get("claims")
+
+
     if (claimInfoMap.isDefined) {
-      claimInfoMap.get.asInstanceOf[Map[String, Any]].values
-        .foreach((propertyList: Any) => propertyList.asInstanceOf[List[Any]]
-          .foreach((property: Any)=> {
-            val mainsnakInfoMap = property.asInstanceOf[Map[String, Any]].get("mainsnak")
+      (claimInfoMap.get match {
+        case x: Map[String, Any] => x
+        case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+        case _ => Map()
+      }).values
+        .foreach((propertyList: Any) => (propertyList match {
+          case x: List[Any] => x
+          case x: java.util.ArrayList[Any] => x.asScala.toList
+          case _ => List[Any]()
+        }).foreach((property: Any)=> {
+            val mainsnakInfoMap = (property match {
+              case x: Map[String, Any] => x
+              case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+              case _ => Map[String, Any]()
+            }).get("mainsnak")
             if (mainsnakInfoMap.isDefined) {
-              val property = mainsnakInfoMap.get.asInstanceOf[Map[String, Any]].getOrElse("property", "").toString
-              val dataValueInfoMap = mainsnakInfoMap.get.asInstanceOf[Map[String, Any]].get("datavalue")
+              val property = (mainsnakInfoMap.get match {
+                case x: Map[String, Any] => x
+                case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+                case _ => Map[String, Any]()
+              }).getOrElse("property", "").toString
+              val dataValueInfoMap = (mainsnakInfoMap.get match {
+                case x: Map[String, Any] => x
+                case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+                case _ => Map[String, Any]()
+              }).get("datavalue")
               if (dataValueInfoMap.isDefined) {
-                val dataValueMap = dataValueInfoMap.get.asInstanceOf[Map[String, Any]].get("value")
-                if (dataValueMap.isDefined && dataValueMap.get.isInstanceOf[Map[String, Any]]) {
-                  val dataValueEntityMap = dataValueMap.get.asInstanceOf[Map[String, Any]]
+                val dataValueMap = (dataValueInfoMap.get match {
+                  case x: Map[String, Any] => x
+                  case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+                  case _ => Map[String, Any]()
+                }).get("value")
+                if (dataValueMap.isDefined) {
+                  val dataValueEntityMap = dataValueMap.get match {
+                    case x: Map[String, Any] => x
+                    case x: java.util.LinkedHashMap[String, Any] => x.asScala.toMap
+                    case _ => Map[String, Any]()
+                  }
                   val entity_type = dataValueEntityMap.get("entity-type")
                   if (entity_type.isDefined && entity_type.get == "item") {
                     vertexList.append(("Q" + dataValueEntityMap.getOrElse("numeric-id", 0).toString, property))
