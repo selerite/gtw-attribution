@@ -308,22 +308,30 @@ object Attribution  extends LazyLogging {
     val aliases = wikidataSourceMap.getOrElse("aliases", Map())
     val sitelinks = wikidataSourceMap.getOrElse("sitelinks", Map())
 
-    val filteredLabels = labels match {
-      case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+    val filteredLabels = (labels match {
+      case sMap: Map[String, Any] => sMap
+      case jMap: java.util.LinkedHashMap[String, Any] => jMap.asScala.toMap
       case _ => Map[String, Any]()
-    }
-    val filteredDescriptions = descriptions match {
-      case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+    }).filter(key => languageList.contains(key._1))
+
+    val filteredDescriptions = (descriptions match {
+      case sMap: Map[String, Any] => sMap
+      case jMap: java.util.LinkedHashMap[String, Any] => jMap.asScala.toMap
       case _ => Map[String, Any]()
-    }
-    val filteredAliases = aliases match {
-      case sMap: Map[String, Any] => sMap.filter(key => languageList.contains(key._1))
+    }).filter(key => languageList.contains(key._1))
+
+    val filteredAliases = (aliases match {
+      case sMap: Map[String, Any] => sMap
+      case jMap: java.util.LinkedHashMap[String, Any] => jMap.asScala.toMap
       case _ => Map[String, Any]()
-    }
-    val filteredSitelinks = sitelinks match {
-      case sMap: Map[String, Any] => sMap.filter(key => LanguageWikiList.contains(key._1))
+    }).filter(key => languageList.contains(key._1))
+
+    val filteredSitelinks = (sitelinks match {
+      case sMap: Map[String, Any] => sMap
+      case jMap: java.util.LinkedHashMap[String, Any] => jMap.asScala.toMap
       case _ => Map[String, Any]()
-    }
+    }).filter(key => LanguageWikiList.contains(key._1))
+
     wikidataSourceMap + ("labels" -> filteredLabels, "descriptions" -> filteredDescriptions, "aliases" -> filteredAliases, "sitelinks" -> filteredSitelinks)
   }
 }
