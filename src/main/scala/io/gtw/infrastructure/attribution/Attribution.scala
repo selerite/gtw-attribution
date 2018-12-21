@@ -178,7 +178,7 @@ object Attribution  extends LazyLogging {
   }
 
   private def widWikiTitleMapping(sourceMap: Map[String, Any]): (Long, String) = {
-    val wikiTitle = sourceMap.getOrElse("wikiTitle", "xxx").toString
+    val wikiTitle = sourceMap.getOrElse("title", "xxx").toString
     val wid = sourceMap.getOrElse("wid", "0").toString.toLong
     (wid, wikiTitle)
   }
@@ -188,7 +188,7 @@ object Attribution  extends LazyLogging {
     result match {
       case (wid, (wikiTitle, weight)) =>
         formattedResultMap += ("wid" -> wid)
-        formattedResultMap += ("wikiTitle" -> wikiTitle)
+        formattedResultMap += ("title" -> wikiTitle)
         formattedResultMap += ("weight" -> weight.getOrElse(0.15))
         (wikiTitle, formattedResultMap.toMap)
     }
@@ -220,6 +220,10 @@ object Attribution  extends LazyLogging {
             val wikiTitle = enwikiInfo match {
               case enwikiInfoX: Map[String, String] =>
                 enwikiInfoX.get("title") match {
+                  case Some(title) => title
+                }
+              case enwikiInfoX: java.util.LinkedHashMap[String, String] =>
+                enwikiInfoX.asScala.get("title") match {
                   case Some(title) => title
                 }
               case _ => ""

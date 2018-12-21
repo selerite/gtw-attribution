@@ -24,7 +24,7 @@ object PageRank {
   }
 
   private def wikiTitleWidMapping(sourceMap: Map[String, Any]): (String, Long) = {
-    val wikiTitle = sourceMap.getOrElse("wikiTitle", "xxx").toString
+    val wikiTitle = sourceMap.getOrElse("title", "xxx").toString
     val wid = sourceMap.getOrElse("wid", "0").toString.toLong
     (wikiTitle, wid)
   }

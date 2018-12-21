@@ -18,6 +18,7 @@ object KafkaProducerManager {
 
   def close(producer: Producer[String, String]): Unit = {
     if (producer != null) {
+      producer.flush()
       producer.close()
     }
   }
